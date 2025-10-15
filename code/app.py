@@ -3,6 +3,14 @@ import preprocessor,helper
 import matplotlib.pyplot as plt
 import seaborn as sns
 import altair as alt
+from io import BytesIO
+from reportlab.lib.pagesizes import A4
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image as RLImage, PageBreak, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib import colors
+from reportlab.lib.utils import ImageReader
+import tempfile
+import pandas as pd
 
 # Page config and global styles
 st.set_page_config(page_title="WhatsApp Chat Analyzer", page_icon="🗨️", layout="wide")
@@ -396,9 +404,8 @@ if uploaded_file is not None:
     if 'last_analyzed_user' not in st.session_state:
         st.session_state.last_analyzed_user = None
     
-    should_analyze = (analyze_clicked or 
-                     st.session_state.last_analyzed_user != selected_user or 
-                     st.session_state.last_analyzed_user is None)
+    # Always render analysis UI every rerun so interactions (checkboxes/buttons) work
+    should_analyze = True
     
     if should_analyze:
         st.session_state.last_analyzed_user = selected_user
@@ -629,6 +636,178 @@ if uploaded_file is not None:
                         st.info("No emoji usage to chart.")
             else:
                 st.info("No emojis found in the selected conversation.")
+
+        # Report Generation Section
+        st.markdown("<h3 class='section-title'>Report</h3>", unsafe_allow_html=True)
+        anonymize = st.checkbox("Anonymize participant names in report", value=False)
+        if st.button("Download Full Report as PDF"):
+            # Prepare filtered dataframe according to selected_user
+            if selected_user != 'Overall':
+                filtered_df = df[df['user'] == selected_user].copy()
+            else:
+                filtered_df = df.copy()
+
+            # Optional anonymization mapping
+            anon_map = {}
+            if anonymize:
+                unique_users = [u for u in filtered_df['user'].unique() if u != 'group_notification']
+                anon_map = {u: f"User {i+1}" for i, u in enumerate(unique_users)}
+                filtered_df['user'] = filtered_df['user'].apply(lambda u: anon_map.get(u, u))
+
+            # Utility: convert matplotlib fig to reportlab image flowable
+            def fig_to_flowable(fig, max_width=480):
+                buf = BytesIO()
+                fig.savefig(buf, format='png', bbox_inches='tight', dpi=180)
+                plt.close(fig)
+                buf.seek(0)
+                img = ImageReader(buf)
+                rl_img = RLImage(img)
+                # scale keeping aspect ratio
+                iw, ih = rl_img.drawWidth, rl_img.drawHeight
+                if iw > max_width:
+                    scale = max_width / iw
+                    rl_img.drawWidth = iw * scale
+                    rl_img.drawHeight = ih * scale
+                return rl_img
+
+            # Compose report
+            buffer = BytesIO()
+            doc = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=36, rightMargin=36, topMargin=36, bottomMargin=36)
+            styles = getSampleStyleSheet()
+            title_style = styles['Title']
+            h_style = styles['Heading2']
+            body = styles['BodyText']
+
+            flow = []
+
+            # Cover Page
+            chat_name = uploaded_file.name if uploaded_file is not None else 'WhatsApp Chat'
+            date_min = str(filtered_df['date'].min().date()) if not filtered_df.empty else '-'
+            date_max = str(filtered_df['date'].max().date()) if not filtered_df.empty else '-'
+            total_msgs = int(filtered_df.shape[0])
+
+            flow.append(Paragraph("WhatsApp Chat Analysis Report", title_style))
+            flow.append(Spacer(1, 12))
+            flow.append(Paragraph(f"Chat: {chat_name}", body))
+            flow.append(Paragraph(f"Scope: {selected_user}", body))
+            flow.append(Paragraph(f"Date range: {date_min} to {date_max}", body))
+            flow.append(Paragraph(f"Total messages analyzed: {total_msgs}", body))
+            flow.append(Paragraph(f"Generated on: <u>{pd.Timestamp.now().strftime('%Y-%m-%d %H:%M')}</u>", body))
+            flow.append(PageBreak())
+
+            # Executive Summary (basic heuristics)
+            try:
+                busiest_day = filtered_df['day_name'].value_counts().idxmax() if not filtered_df.empty else '-'
+                busiest_user = filtered_df[filtered_df['user']!='group_notification']['user'].value_counts().idxmax() if not filtered_df.empty else '-'
+            except Exception:
+                busiest_day, busiest_user = '-', '-'
+            flow.append(Paragraph("Executive Summary", h_style))
+            flow.append(Paragraph(f"- Peak activity day: {busiest_day}", body))
+            flow.append(Paragraph(f"- Most frequent sender: {busiest_user}", body))
+            flow.append(Spacer(1, 12))
+
+            # Message Statistics chart
+            num_messages, words_count, num_media_messages, num_links = helper.fetch_stats(selected_user, df)
+            fig, ax = plt.subplots(figsize=(5, 3))
+            stats_labels = ['Messages', 'Words', 'Media', 'Links']
+            stats_values = [num_messages, words_count, num_media_messages, num_links]
+            ax.bar(stats_labels, stats_values, color=['#7c3aed','#2563eb','#22c55e','#f59e0b'])
+            ax.set_title('Message Statistics')
+            flow.append(fig_to_flowable(fig))
+            flow.append(Spacer(1, 6))
+
+            # Timeline charts
+            tl = helper.monthly_timeline(selected_user, df)
+            if tl is not None and not tl.empty:
+                fig, ax = plt.subplots(figsize=(6, 3.2))
+                ax.plot(tl['time'], tl['message'], color='#2563eb')
+                ax.set_title('Monthly Timeline')
+                ax.tick_params(axis='x', labelrotation=60)
+                flow.append(fig_to_flowable(fig))
+                flow.append(Spacer(1, 6))
+
+            dl = helper.daily_timeline(selected_user, df)
+            if dl is not None and not dl.empty:
+                fig, ax = plt.subplots(figsize=(6, 3.2))
+                ax.plot(dl['only_date'], dl['message'], color='#a78bfa')
+                ax.set_title('Daily Timeline')
+                fig.autofmt_xdate()
+                flow.append(fig_to_flowable(fig))
+                flow.append(Spacer(1, 6))
+
+            # Activity heatmap (day vs period)
+            hm = helper.activity_heatmap(selected_user, df)
+            if hm is not None and not hm.empty:
+                fig, ax = plt.subplots(figsize=(6, 3.2))
+                sns.heatmap(hm, cmap='mako', ax=ax, cbar_kws={'label':'Messages'})
+                ax.set_title('Weekly Activity Heatmap')
+                flow.append(fig_to_flowable(fig))
+                flow.append(Spacer(1, 6))
+
+            # Most active participants (Overall only)
+            if selected_user == 'Overall':
+                x, new_df = helper.most_busy_users(df)
+                if not x.empty:
+                    disp_index = [anon_map.get(idx, idx) if anonymize else idx for idx in x.index]
+                    fig, ax = plt.subplots(figsize=(5.5, 3.2))
+                    ax.bar(disp_index, x.values, color='#ef4444')
+                    ax.set_title('Most Active Participants')
+                    ax.tick_params(axis='x', labelrotation=60)
+                    flow.append(fig_to_flowable(fig))
+                    flow.append(Spacer(1, 6))
+
+            # Top emojis
+            e_df = helper.emoji_helper(selected_user, df)
+            if e_df is not None and not e_df.empty:
+                try:
+                    e_df.columns = ['emoji','count']
+                except Exception:
+                    pass
+                top_e = e_df.head(10)
+                fig, ax = plt.subplots(figsize=(5, 3.2))
+                ax.barh(top_e['emoji'][::-1], top_e['count'][::-1], color='#60a5fa')
+                ax.set_title('Top Emojis')
+                flow.append(fig_to_flowable(fig))
+                flow.append(Spacer(1, 6))
+
+            # Most common words
+            mc_df = helper.most_common_words(selected_user, df)
+            if mc_df is not None and not mc_df.empty:
+                fig, ax = plt.subplots(figsize=(5.5, 3.2))
+                ax.barh(mc_df[0][::-1], mc_df[1][::-1], color='#22c55e')
+                ax.set_title('Most Common Words')
+                flow.append(fig_to_flowable(fig))
+                flow.append(PageBreak())
+
+            # Appendix: Basic tables
+            flow.append(Paragraph('Appendix: Summary Tables', h_style))
+            # Summary metrics table
+            metrics_data = [
+                ['Metric', 'Value'],
+                ['Total Messages', str(total_msgs)],
+                ['Total Words', str(words_count)],
+                ['Media Messages', str(num_media_messages)],
+                ['Links Shared', str(num_links)],
+            ]
+            t = Table(metrics_data, hAlign='LEFT')
+            t.setStyle(TableStyle([
+                ('BACKGROUND', (0,0), (-1,0), colors.grey),
+                ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
+                ('GRID', (0,0), (-1,-1), 0.5, colors.lightgrey),
+                ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+                ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+            ]))
+            flow.append(t)
+
+            # Build PDF
+            doc.build(flow)
+            buffer.seek(0)
+            st.download_button(
+                label="Download Full Report as PDF",
+                data=buffer,
+                file_name=f"chat_report_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.pdf",
+                mime="application/pdf"
+            )
     else:
         st.markdown("<div class='empty-card'>Click 'Refresh Analysis' to generate insights for the selected user.</div>", unsafe_allow_html=True)
 else:
@@ -667,5 +846,5 @@ else:
     """, unsafe_allow_html=True)
 
 # Footer
-st.markdown("<div class='app-footer'>Made with ❤️ using Streamlit · Need help? See README</div>", unsafe_allow_html=True)
+st.markdown("<div class='app-footer'>Made with ❤️ using Streamlit · All Rights Reserved ©2025 Rohan Mushan</div>", unsafe_allow_html=True)
 
