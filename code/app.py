@@ -170,10 +170,10 @@ st.markdown(
       /* Enhanced Section Headers */
       .section-title {{
         margin: 16px 0 24px 0;
-        padding: 16px 24px;
-        border-radius: 16px;
-        background: var(--gradient1);
-        color: #ffffff;
+        padding: 0;
+        border-radius: 0;
+        background: transparent;
+        color: var(--text);
         display: inline-block;
         font-weight: 700;
         font-size: 1.1rem;
@@ -217,10 +217,9 @@ st.markdown(
       /* Enhanced Tabs */
       .stTabs [data-baseweb="tab-list"] {{
         gap: 8px;
-        background: rgba(255,255,255,0.05);
+        background: transparent;
         padding: 8px;
         border-radius: 16px;
-        
       }}
       
       .stTabs [data-baseweb="tab"] {{
@@ -236,10 +235,10 @@ st.markdown(
       }}
       
       .stTabs [aria-selected="true"] {{
-        background: var(--gradient1);
-        color: #ffffff;
-        border-color: transparent;
-        transform: translateY(-2px);
+        background: transparent;
+        color: var(--text);
+        border-color: rgba(255,255,255,0.1);
+        transform: none;
       }}
 
       /* Enhanced Empty State */
