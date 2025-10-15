@@ -16,7 +16,7 @@ def preprocess(data):
     pattern = None
     messages = []
     dates = []
-    
+    `   M,+HGAQ`
     for p in patterns:
         print(f"DEBUG: Trying pattern: {p}")
         test_messages = re.split(p, data)[1:]
