@@ -96,6 +96,11 @@ def preprocess(data):
     for i, message in enumerate(df['user_message']):
         if i < 3:  # Debug first 3 messages
             print(f"DEBUG: Message {i}: '{message[:100]}...'")
+
+        # Remove leftover clock period prefixes like "am - " or "pm - "
+        # that can remain after splitting the date/time from WhatsApp exports.
+        # Example raw fragment: "pm - John Doe: Hello" → "John Doe: Hello"
+        message = re.sub(r'^(?i:(?:am|pm))\s*-\s*', '', message.strip())
         
         # Try different patterns to extract user and message
         user_message = None

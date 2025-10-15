@@ -446,7 +446,7 @@ if uploaded_file is not None:
                     ax.plot(timeline['time'], timeline['message'], color='#22c55e', linewidth=1.6)
                     plt.xticks(rotation='vertical')
                     plt.tight_layout()
-                    st.pyplot(fig, use_container_width=False)
+                    st.pyplot(fig, width='content')
                 else:
                     st.info("No monthly activity to display.")
             
@@ -458,7 +458,7 @@ if uploaded_file is not None:
                     ax.plot(daily_timeline['only_date'], daily_timeline['message'], color='#a78bfa', linewidth=1.6)
                     plt.xticks(rotation='vertical')
                     plt.tight_layout()
-                    st.pyplot(fig, use_container_width=False)
+                    st.pyplot(fig, width='content')
                 else:
                     st.info("No daily activity to display.")
 
@@ -473,7 +473,7 @@ if uploaded_file is not None:
                     fig,ax = plt.subplots(figsize=(6,3.2))
                     ax.bar(busy_day.index,busy_day.values,color='#f59e0b')
                     plt.xticks(rotation='vertical')
-                    st.pyplot(fig, use_container_width=False)
+                    st.pyplot(fig, width='content')
                 else:
                     st.info("No weekly activity to display.")
             with col2:
@@ -483,7 +483,7 @@ if uploaded_file is not None:
                     fig, ax = plt.subplots(figsize=(6,3.2))
                     ax.bar(busy_month.index, busy_month.values,color='#38bdf8')
                     plt.xticks(rotation='vertical')
-                    st.pyplot(fig, use_container_width=False)
+                    st.pyplot(fig, width='content')
                 else:
                     st.info("No monthly activity breakdown to display.")
 
@@ -494,7 +494,7 @@ if uploaded_file is not None:
                 ax = sns.heatmap(user_heatmap, cmap="mako", cbar_kws={"label": "Messages"})
                 ax.set_xlabel("Hour Period")
                 ax.set_ylabel("Day of Week")
-                st.pyplot(fig, use_container_width=False)
+                st.pyplot(fig, width='content')
             else:
                 st.info("No heatmap data to display.")
 
@@ -529,7 +529,7 @@ if uploaded_file is not None:
                     labelColor='#e2e8f0', titleColor='#e2e8f0'
                 ).configure_legend(
                     labelColor='#e2e8f0', titleColor='#e2e8f0'
-                ), use_container_width=False)
+                ))
             else:
                 st.info("No time-based activity data to display.")
 
@@ -557,7 +557,7 @@ if uploaded_file is not None:
                 fig,ax = plt.subplots(figsize=(6.5,3.8))
                 ax.imshow(df_wc)
                 ax.axis('off')
-                st.pyplot(fig, use_container_width=False)
+                st.pyplot(fig, width='content')
             else:
                 st.info("Not enough text to generate a wordcloud.")
 
@@ -566,7 +566,7 @@ if uploaded_file is not None:
                 fig,ax = plt.subplots(figsize=(6.5,3.8))
                 ax.barh(most_common_df[0],most_common_df[1], color="#60a5fa")
                 plt.xticks(rotation='vertical')
-                st.pyplot(fig, use_container_width=False)
+                st.pyplot(fig, width='content')
             else:
                 st.info("No common words to display.")
 
@@ -575,15 +575,57 @@ if uploaded_file is not None:
             st.markdown("<h3 class='section-title'>Emojis</h3>", unsafe_allow_html=True)
             emoji_df = helper.emoji_helper(selected_user,df)
             if emoji_df is not None and not emoji_df.empty:
-                col1,col2 = st.columns(2)
+                # Ensure proper column names
+                try:
+                    emoji_df.columns = ['emoji', 'count']
+                except Exception:
+                    pass
+
+                # Prepare display table with requested headers (no serial number)
+                emoji_df = emoji_df.reset_index(drop=True)
+                display_df = (
+                    emoji_df[[ 'emoji', 'count' ]]
+                    .rename(columns={
+                        'emoji': 'emojis',
+                        'count': 'no of time occured'
+                    })
+                )
+
+                col1, col2 = st.columns(2)
                 with col1:
-                    st.dataframe(emoji_df)
+                    st.dataframe(display_df, height=520)
                 with col2:
-                    top_counts = emoji_df[1].head()
-                    if top_counts.sum() > 0:
-                        fig,ax = plt.subplots(figsize=(5,5))
-                        ax.pie(top_counts,labels=emoji_df[0].head(),autopct="%0.2f")
-                        st.pyplot(fig, use_container_width=False)
+                    # Use Altair (browser fonts) so emojis render correctly
+                    top_n = 10 if len(emoji_df) >= 10 else len(emoji_df)
+                    top_df = emoji_df.head(top_n)
+                    if not top_df.empty and top_df['count'].sum() > 0:
+                        bar = (
+                            alt.Chart(top_df)
+                              .mark_bar()
+                              .encode(
+                                  y=alt.Y('emoji:N', sort='-x', title='Emojis'),
+                                  x=alt.X('count:Q', title='No. of times occurred'),
+                                  tooltip=[
+                                      alt.Tooltip('emoji:N', title='Emoji'),
+                                      alt.Tooltip('count:Q', title='Count')
+                                  ]
+                              )
+                              .properties(width=380, height=520)
+                        )
+                        text = (
+                            alt.Chart(top_df)
+                              .mark_text(align='left', dx=3, color='#e2e8f0')
+                              .encode(
+                                  y=alt.Y('emoji:N', sort='-x'),
+                                  x='count:Q',
+                                  text='count:Q'
+                              )
+                        )
+                        st.altair_chart((bar + text).configure_axis(
+                            labelColor='#e2e8f0', titleColor='#e2e8f0'
+                        ).configure_legend(
+                            labelColor='#e2e8f0', titleColor='#e2e8f0'
+                        ))
                     else:
                         st.info("No emoji usage to chart.")
             else:
