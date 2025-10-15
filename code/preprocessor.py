@@ -6,17 +6,17 @@ def preprocess(data):
     print(f"DEBUG: First 500 chars of data: {data[:500]}")
     
     patterns = [
-        r'\d{1,2}/\d{1,2}/\d{2,4},\s\d{1,2}:\d{2}\s-\s',  # DD/MM/YYYY, HH:MM - 
-        r'\d{1,2}/\d{1,2}/\d{2,4},\s\d{1,2}:\d{2}\s',     # DD/MM/YYYY, HH:MM 
-        r'\d{1,2}-\d{1,2}-\d{2,4},\s\d{1,2}:\d{2}\s-\s',  # DD-MM-YYYY, HH:MM - 
-        r'\d{1,2}\.\d{1,2}\.\d{2,4},\s\d{1,2}:\d{2}\s-\s', # DD.MM.YYYY, HH:MM - 
+        r'\d{1,2}/\d{1,2}/\d{2,4},\s\d{1,2}:\d{2}\s-\s',
+        r'\d{1,2}/\d{1,2}/\d{2,4},\s\d{1,2}:\d{2}\s',     
+        r'\d{1,2}-\d{1,2}-\d{2,4},\s\d{1,2}:\d{2}\s-\s',  
+        r'\d{1,2}\.\d{1,2}\.\d{2,4},\s\d{1,2}:\d{2}\s-\s', 
         r'\[\d{1,2}/\d{1,2}/\d{2,4},\s\d{1,2}:\d{2}:\d{2}\]', 
     ]
     
     pattern = None
     messages = []
     dates = []
-    `   M,+HGAQ`
+    
     for p in patterns:
         print(f"DEBUG: Trying pattern: {p}")
         test_messages = re.split(p, data)[1:]

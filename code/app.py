@@ -2,6 +2,7 @@ import streamlit as st
 import preprocessor,helper
 import matplotlib.pyplot as plt
 import seaborn as sns
+import altair as alt
 
 # Page config and global styles
 st.set_page_config(page_title="WhatsApp Chat Analyzer", page_icon="🗨️", layout="wide")
@@ -436,23 +437,30 @@ if uploaded_file is not None:
         # Timeline Tab
         with tab_timeline:
             st.markdown("<h3 class='section-title'>Timeline</h3>", unsafe_allow_html=True)
-            timeline = helper.monthly_timeline(selected_user,df)
-            if timeline is not None and not timeline.empty:
-                fig,ax = plt.subplots()
-                ax.plot(timeline['time'], timeline['message'],color='#22c55e')
-                plt.xticks(rotation='vertical')
-                st.pyplot(fig)
-            else:
-                st.info("No monthly activity to display.")
-
-            daily_timeline = helper.daily_timeline(selected_user, df)
-            if daily_timeline is not None and not daily_timeline.empty:
-                fig, ax = plt.subplots()
-                ax.plot(daily_timeline['only_date'], daily_timeline['message'], color='#a78bfa')
-                plt.xticks(rotation='vertical')
-                st.pyplot(fig)
-            else:
-                st.info("No daily activity to display.")
+            col_left, col_right = st.columns(2)
+            # Monthly timeline (left)
+            with col_left:
+                timeline = helper.monthly_timeline(selected_user, df)
+                if timeline is not None and not timeline.empty:
+                    fig, ax = plt.subplots(figsize=(8, 5))
+                    ax.plot(timeline['time'], timeline['message'], color='#22c55e', linewidth=1.6)
+                    plt.xticks(rotation='vertical')
+                    plt.tight_layout()
+                    st.pyplot(fig, use_container_width=False)
+                else:
+                    st.info("No monthly activity to display.")
+            
+            # Daily timeline (right)
+            with col_right:
+                daily_timeline = helper.daily_timeline(selected_user, df)
+                if daily_timeline is not None and not daily_timeline.empty:
+                    fig, ax = plt.subplots(figsize=(8, 5))
+                    ax.plot(daily_timeline['only_date'], daily_timeline['message'], color='#a78bfa', linewidth=1.6)
+                    plt.xticks(rotation='vertical')
+                    plt.tight_layout()
+                    st.pyplot(fig, use_container_width=False)
+                else:
+                    st.info("No daily activity to display.")
 
         # Activity Tab
         with tab_activity:
@@ -462,31 +470,68 @@ if uploaded_file is not None:
                 st.subheader("Most Busy Day")
                 busy_day = helper.week_activity_map(selected_user,df)
                 if busy_day is not None and not busy_day.empty:
-                    fig,ax = plt.subplots()
+                    fig,ax = plt.subplots(figsize=(6,3.2))
                     ax.bar(busy_day.index,busy_day.values,color='#f59e0b')
                     plt.xticks(rotation='vertical')
-                    st.pyplot(fig)
+                    st.pyplot(fig, use_container_width=False)
                 else:
                     st.info("No weekly activity to display.")
             with col2:
                 st.subheader("Most Busy Month")
                 busy_month = helper.month_activity_map(selected_user, df)
                 if busy_month is not None and not busy_month.empty:
-                    fig, ax = plt.subplots()
+                    fig, ax = plt.subplots(figsize=(6,3.2))
                     ax.bar(busy_month.index, busy_month.values,color='#38bdf8')
                     plt.xticks(rotation='vertical')
-                    st.pyplot(fig)
+                    st.pyplot(fig, use_container_width=False)
                 else:
                     st.info("No monthly activity breakdown to display.")
 
             st.subheader("Weekly Activity Map")
             user_heatmap = helper.activity_heatmap(selected_user,df)
             if user_heatmap is not None and not user_heatmap.empty:
-                fig,ax = plt.subplots()
-                ax = sns.heatmap(user_heatmap, cmap="crest")
-                st.pyplot(fig)
+                fig,ax = plt.subplots(figsize=(6.5,3.6))
+                ax = sns.heatmap(user_heatmap, cmap="mako", cbar_kws={"label": "Messages"})
+                ax.set_xlabel("Hour Period")
+                ax.set_ylabel("Day of Week")
+                st.pyplot(fig, use_container_width=False)
             else:
                 st.info("No heatmap data to display.")
+
+            st.subheader("Time-based Activity Heatmap by Participant")
+            grid_df = helper.time_activity_user_grid(selected_user, df)
+            if grid_df is not None and not grid_df.empty:
+                # Build interactive Altair heatmap: Day vs Hour, colored by count, tooltip with details
+                # If Overall, facet by user; if single user, just show one heatmap labeled
+                base = alt.Chart(grid_df)
+
+                heat = base.mark_rect().encode(
+                    x=alt.X('hour:O', title='Hour of Day'),
+                    y=alt.Y('day_name:O', sort=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'], title='Day of Week'),
+                    color=alt.Color('count:Q', scale=alt.Scale(scheme='inferno'), title='Messages'),
+                    tooltip=[
+                        alt.Tooltip('user:N', title='Participant'),
+                        alt.Tooltip('day_name:N', title='Day'),
+                        alt.Tooltip('hour:O', title='Hour'),
+                        alt.Tooltip('count:Q', title='Messages')
+                    ]
+                ).properties(width=520, height=220)
+
+                if selected_user == 'Overall':
+                    chart = heat.facet(
+                        row=alt.Row('user:N', title='Participant', header=alt.Header(labelAngle=0)),
+                    ).resolve_scale(color='shared')
+                else:
+                    # Add a title for clarity
+                    chart = heat.properties(title=f"{selected_user} — Messages by Day and Hour")
+
+                st.altair_chart(chart.configure_axis(
+                    labelColor='#e2e8f0', titleColor='#e2e8f0'
+                ).configure_legend(
+                    labelColor='#e2e8f0', titleColor='#e2e8f0'
+                ), use_container_width=False)
+            else:
+                st.info("No time-based activity data to display.")
 
         # Users Tab
         with tab_users:
@@ -509,19 +554,19 @@ if uploaded_file is not None:
             st.markdown("<h3 class='section-title'>Words</h3>", unsafe_allow_html=True)
             df_wc = helper.create_wordcloud(selected_user,df)
             if df_wc is not None:
-                fig,ax = plt.subplots()
+                fig,ax = plt.subplots(figsize=(6.5,3.8))
                 ax.imshow(df_wc)
                 ax.axis('off')
-                st.pyplot(fig)
+                st.pyplot(fig, use_container_width=False)
             else:
                 st.info("Not enough text to generate a wordcloud.")
 
             most_common_df = helper.most_common_words(selected_user,df)
             if most_common_df is not None and not most_common_df.empty:
-                fig,ax = plt.subplots()
+                fig,ax = plt.subplots(figsize=(6.5,3.8))
                 ax.barh(most_common_df[0],most_common_df[1], color="#60a5fa")
                 plt.xticks(rotation='vertical')
-                st.pyplot(fig)
+                st.pyplot(fig, use_container_width=False)
             else:
                 st.info("No common words to display.")
 
@@ -536,9 +581,9 @@ if uploaded_file is not None:
                 with col2:
                     top_counts = emoji_df[1].head()
                     if top_counts.sum() > 0:
-                        fig,ax = plt.subplots()
+                        fig,ax = plt.subplots(figsize=(5,5))
                         ax.pie(top_counts,labels=emoji_df[0].head(),autopct="%0.2f")
-                        st.pyplot(fig)
+                        st.pyplot(fig, use_container_width=False)
                     else:
                         st.info("No emoji usage to chart.")
             else:

@@ -3,6 +3,7 @@ from wordcloud import WordCloud
 import pandas as pd
 from collections import Counter
 import emoji
+from pathlib import Path
 
 extract = URLExtract()
 
@@ -48,8 +49,8 @@ def most_busy_users(df):
 
 def create_wordcloud(selected_user,df):
 
-    f = open('stop_hinglish.txt', 'r')
-    stop_words_text = f.read()
+    stop_path = Path(__file__).resolve().parent / 'stop_hinglish.txt'
+    stop_words_text = stop_path.read_text(encoding='utf-8') if stop_path.exists() else ''
     stop_words = set(w.strip() for w in stop_words_text.splitlines() if w.strip())
 
     if selected_user != 'Overall':
@@ -82,8 +83,8 @@ def create_wordcloud(selected_user,df):
 
 def most_common_words(selected_user,df):
 
-    f = open('stop_hinglish.txt','r')
-    stop_words_text = f.read()
+    stop_path = Path(__file__).resolve().parent / 'stop_hinglish.txt'
+    stop_words_text = stop_path.read_text(encoding='utf-8') if stop_path.exists() else ''
     stop_words = set(w.strip() for w in stop_words_text.splitlines() if w.strip())
 
     if selected_user != 'Overall':
@@ -180,6 +181,41 @@ def activity_heatmap(selected_user,df):
     user_heatmap = df.pivot_table(index='day_name', columns='period', values='message', aggfunc='count').fillna(0)
 
     return user_heatmap
+
+
+def time_activity_user_grid(selected_user, df):
+
+    # Filter by selected user when not overall
+    if selected_user != 'Overall':
+        df = df[df['user'] == selected_user]
+
+    if df.empty:
+        return pd.DataFrame(columns=['user', 'day_name', 'hour', 'count'])
+
+    # Define day order for consistent display
+    day_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+
+    # Group to counts
+    grouped = (
+        df.groupby(['user', 'day_name', 'hour'])
+          .size()
+          .reset_index(name='count')
+    )
+
+    # Ensure categorical ordering and hour int
+    grouped['day_name'] = pd.Categorical(grouped['day_name'], categories=day_order, ordered=True)
+    grouped['hour'] = grouped['hour'].astype(int)
+
+    # Fill missing day-hour combinations per user with zeros
+    users = grouped['user'].unique()
+    full_index = (
+        pd.MultiIndex.from_product(
+            [users, day_order, list(range(24))], names=['user', 'day_name', 'hour']
+        )
+    )
+    grouped = grouped.set_index(['user', 'day_name', 'hour']).reindex(full_index, fill_value=0).reset_index()
+
+    return grouped
 
 
 
