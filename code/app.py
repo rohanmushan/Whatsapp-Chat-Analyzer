@@ -12,16 +12,14 @@ from reportlab.lib.utils import ImageReader
 import tempfile
 import pandas as pd
 
-# Utility to display tables starting at row number 1
+# small helper: show table rows starting from 1 (looks cleaner to me)
 def df_1based(df: pd.DataFrame) -> pd.DataFrame:
     d = df.copy()
     d.index = range(1, len(d) + 1)
     return d
 
-# Page config and global styles
 st.set_page_config(page_title="CHATLYTICS", layout="wide")
 
-# Load external CSS file (static, without theme toggling)
 def load_css():
     import os
     possible_paths = [
@@ -44,6 +42,7 @@ css_content = load_css()
 if css_content:
     st.markdown(f"<style>{css_content}</style>", unsafe_allow_html=True)
 
+# landing hero: title + short description + feature chips
 st.markdown("""
 <div class='hero-card' style='text-align: center; display: flex; flex-direction: column; align-items: center;'>
     <div class='hero-title' style='text-align: center; font-size: clamp(2.75rem, 7vw, 4.25rem); font-weight: 800; letter-spacing: 0.5px; margin-bottom: 0;'>CHATLYTICS</div>
@@ -68,46 +67,46 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
+# user brings the exported whatsapp .txt here
 uploaded_file = st.file_uploader("Upload exported chat (.txt)", help="Export a chat from WhatsApp and upload the .txt file here")
 if uploaded_file is not None:
+    # read bytes and parse to dataframe
     bytes_data = uploaded_file.getvalue()
     data = bytes_data.decode("utf-8")
     df = preprocessor.preprocess(data)
 
-    # fetch unique users
+    # build list of participants for dropdown
     user_list = df['user'].unique().tolist()
     if 'group_notification' in user_list:
         user_list.remove('group_notification')
     user_list.sort()
     user_list.insert(0,"Overall")
 
+    # keep dropdown and button aligned on same line
     col_sel, col_btn = st.columns([3,1], vertical_alignment="bottom")
     with col_sel:
         selected_user = st.selectbox("Analyze messages for",user_list, help="View metrics for a specific participant or overall")
     with col_btn:
         analyze_clicked = st.button("Refresh Analysis", type="primary", help="Regenerate insights for the selected scope")
 
-    # Auto-analyze when file is uploaded or user changes
+    # remember last selection (simple session tracking)
     if 'last_analyzed_user' not in st.session_state:
         st.session_state.last_analyzed_user = None
     
-    # Always render analysis UI every rerun so interactions (checkboxes/buttons) work
+    # after file uploaded, always render the analysis
     should_analyze = True
     
     if should_analyze:
         st.session_state.last_analyzed_user = selected_user
         
-        # Debug information removed for production
         
-        # Header
         st.markdown("<h2 class='section-title'>Overview</h2>", unsafe_allow_html=True)
 
-        # Tabs
+        # main sections of the app
         tab_overview, tab_timeline, tab_activity, tab_users, tab_words, tab_emojis = st.tabs([
             "Overview", "Timeline", "Activity", "Users", "Words", "Emojis"
         ])
 
-        # Stats Area as metric cards
         num_messages, words, num_media_messages, num_links = helper.fetch_stats(selected_user,df)
         with tab_overview:
             c1, c2, c3, c4 = st.columns(4)
@@ -120,11 +119,9 @@ if uploaded_file is not None:
             with c4:
                 st.markdown("<div class='metric-card'><div class='metric-label'>🔗 Links</div><div class='metric-value'>"+str(num_links)+"</div></div>", unsafe_allow_html=True)
 
-        # Timeline Tab
         with tab_timeline:
             st.markdown("<h3 class='section-title'>Timeline</h3>", unsafe_allow_html=True)
             col_left, col_right = st.columns(2)
-            # Monthly timeline (left)
             with col_left:
                 timeline = helper.monthly_timeline(selected_user, df)
                 if timeline is not None and not timeline.empty:
@@ -136,7 +133,6 @@ if uploaded_file is not None:
                 else:
                     st.info("No monthly activity to display.")
             
-            # Daily timeline (right)
             with col_right:
                 daily_timeline = helper.daily_timeline(selected_user, df)
                 if daily_timeline is not None and not daily_timeline.empty:
@@ -148,7 +144,6 @@ if uploaded_file is not None:
                 else:
                     st.info("No daily activity to display.")
 
-        # Activity Tab
         with tab_activity:
             st.markdown("<h3 class='section-title'>Activity</h3>", unsafe_allow_html=True)
             col1,col2 = st.columns(2)
@@ -187,8 +182,6 @@ if uploaded_file is not None:
             st.subheader("Time-based Activity Heatmap by Participant")
             grid_df = helper.time_activity_user_grid(selected_user, df)
             if grid_df is not None and not grid_df.empty:
-                # Build interactive Altair heatmap: Day vs Hour, colored by count, tooltip with details
-                # If Overall, facet by user; if single user, just show one heatmap labeled
                 base = alt.Chart(grid_df)
 
                 heat = base.mark_rect().encode(
@@ -208,7 +201,6 @@ if uploaded_file is not None:
                         row=alt.Row('user:N', title='Participant', header=alt.Header(labelAngle=0)),
                     ).resolve_scale(color='shared')
                 else:
-                    # Add a title for clarity
                     chart = heat.properties(title=f"{selected_user} — Messages by Day and Hour")
 
                 st.altair_chart(chart.configure_axis(
@@ -219,7 +211,6 @@ if uploaded_file is not None:
             else:
                 st.info("No time-based activity data to display.")
 
-        # Users Tab
         with tab_users:
             st.markdown("<h3 class='section-title'>Users</h3>", unsafe_allow_html=True)
             if selected_user == 'Overall':
@@ -235,7 +226,6 @@ if uploaded_file is not None:
             else:
                 st.info("Switch to 'Overall' to view most busy users.")
 
-        # Words Tab
         with tab_words:
             st.markdown("<h3 class='section-title'>Words</h3>", unsafe_allow_html=True)
             df_wc = helper.create_wordcloud(selected_user,df)
@@ -267,7 +257,6 @@ if uploaded_file is not None:
                 except Exception:
                     pass
 
-                # Prepare display table with requested headers (no serial number)
                 emoji_df = emoji_df.reset_index(drop=True)
                 display_df = (
                     emoji_df[[ 'emoji', 'count' ]]
@@ -281,7 +270,6 @@ if uploaded_file is not None:
                 with col1:
                     st.dataframe(df_1based(display_df), height=520)
                 with col2:
-                    # Use Altair (browser fonts) so emojis render correctly
                     top_n = 10 if len(emoji_df) >= 10 else len(emoji_df)
                     top_df = emoji_df.head(top_n)
                     if not top_df.empty and top_df['count'].sum() > 0:
@@ -318,6 +306,7 @@ if uploaded_file is not None:
                 st.info("No emojis found in the selected conversation.")
 
         # Report Generation Section
+        # PDF Report area (we build PDF every render and show download button)
         st.markdown("<h3 class='section-title'>Report</h3>", unsafe_allow_html=True)
         # Prepare filtered dataframe according to selected_user
         if selected_user != 'Overall':
@@ -326,6 +315,7 @@ if uploaded_file is not None:
             filtered_df = df.copy()
 
         # Utility: convert matplotlib fig to reportlab image flowable
+        # turn matplotlib figure into ReportLab image (so we can put charts into PDF)
         def fig_to_flowable(fig, max_width=480):
             buf = BytesIO()
             fig.savefig(buf, format='png', bbox_inches='tight', dpi=180)

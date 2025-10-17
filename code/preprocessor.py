@@ -1,6 +1,8 @@
 import re
 import pandas as pd
 
+# parse whatsapp chat text into a dataframe we use in app
+
 def preprocess(data):
     print(f"DEBUG: Raw data length: {len(data)}")
     print(f"DEBUG: First 500 chars of data: {data[:500]}")
@@ -32,7 +34,6 @@ def preprocess(data):
     
     if not pattern or len(messages) == 0:
         print("DEBUG: No valid pattern found, trying alternative parsing...")
-        # Fallback: try to split by lines and look for date patterns
         lines = data.split('\n')
         messages = []
         dates = []
@@ -49,7 +50,6 @@ def preprocess(data):
         if current_message:
             messages.append(current_message.strip())
         
-        # Extract dates from messages
         for msg in messages:
             date_match = re.search(r'\d{1,2}[/\-\.]\d{1,2}[/\-\.]\d{2,4}', msg)
             if date_match:
@@ -69,24 +69,21 @@ def preprocess(data):
     print(f"DEBUG: DataFrame shape after initial creation: {df.shape}")
     print(f"DEBUG: First few user_messages: {df['user_message'].head().tolist()}")
     
-    # Convert message_date type with error handling
     try:
-        if pattern == patterns[0]:  # DD/MM/YYYY, HH:MM - 
+        if pattern == patterns[0]:  
             df['message_date'] = pd.to_datetime(df['message_date'], format='%d/%m/%Y, %H:%M - ')
-        elif pattern == patterns[1]:  # DD/MM/YYYY, HH:MM 
+        elif pattern == patterns[1]:  
             df['message_date'] = pd.to_datetime(df['message_date'], format='%d/%m/%Y, %H:%M ')
-        elif pattern == patterns[2]:  # DD-MM-YYYY, HH:MM - 
+        elif pattern == patterns[2]:  
             df['message_date'] = pd.to_datetime(df['message_date'], format='%d-%m-%Y, %H:%M - ')
-        elif pattern == patterns[3]:  # DD.MM.YYYY, HH:MM - 
+        elif pattern == patterns[3]:  
             df['message_date'] = pd.to_datetime(df['message_date'], format='%d.%m.%Y, %H:%M - ')
-        elif pattern == patterns[4]:  # [DD/MM/YYYY, HH:MM:SS]
+        elif pattern == patterns[4]:  
             df['message_date'] = pd.to_datetime(df['message_date'], format='[%d/%m/%Y, %H:%M:%S]')
         else:
-            # Try to parse with pandas' automatic date detection
             df['message_date'] = pd.to_datetime(df['message_date'], errors='coerce')
     except Exception as e:
         print(f"DEBUG: Date parsing error: {e}")
-        # Fallback: try automatic parsing
         df['message_date'] = pd.to_datetime(df['message_date'], errors='coerce')
 
     df.rename(columns={'message_date': 'date'}, inplace=True)
@@ -94,41 +91,32 @@ def preprocess(data):
     users = []
     messages = []
     for i, message in enumerate(df['user_message']):
-        if i < 3:  # Debug first 3 messages
+        if i < 3:  
             print(f"DEBUG: Message {i}: '{message[:100]}...'")
 
-        # Remove leftover clock period prefixes like "am - " or "pm - "
-        # that can remain after splitting the date/time from WhatsApp exports.
-        # Example raw fragment: "pm - John Doe: Hello" → "John Doe: Hello"
         message = re.sub(r'^(?i:(?:am|pm))\s*-\s*', '', message.strip())
         
-        # Try different patterns to extract user and message
         user_message = None
         
-        # Pattern 1: Name: message (most common)
         match1 = re.match(r'^([^:]+):\s(.+)$', message, re.DOTALL)
         if match1:
             user_message = (match1.group(1).strip(), match1.group(2).strip())
         
-        # Pattern 2: [Date] Name: message
         if not user_message:
             match2 = re.match(r'^\[.*?\]\s*([^:]+):\s(.+)$', message, re.DOTALL)
             if match2:
                 user_message = (match2.group(1).strip(), match2.group(2).strip())
         
-        # Pattern 3: Date - Name: message
         if not user_message:
             match3 = re.match(r'^.*?-\s*([^:]+):\s(.+)$', message, re.DOTALL)
             if match3:
                 user_message = (match3.group(1).strip(), match3.group(2).strip())
         
-        # Pattern 4: Just look for any colon
         if not user_message:
             colon_pos = message.find(':')
             if colon_pos > 0:
                 potential_user = message[:colon_pos].strip()
                 potential_message = message[colon_pos+1:].strip()
-                # Check if potential_user looks like a name (not too long, no special chars)
                 if len(potential_user) < 50 and not re.search(r'[^\w\s\-\.]', potential_user):
                     user_message = (potential_user, potential_message)
         
@@ -138,12 +126,10 @@ def preprocess(data):
             if i < 3:
                 print(f"DEBUG: Extracted user: '{user_message[0]}', message: '{user_message[1][:50]}...'")
         else:
-            # Check if it's a system message
             if any(keyword in message.lower() for keyword in ['added', 'removed', 'left', 'joined', 'created', 'changed']):
                 users.append('group_notification')
                 messages.append(message.strip())
             else:
-                # If no pattern matches, treat as group notification
                 users.append('group_notification')
                 messages.append(message.strip())
             if i < 3:
@@ -157,11 +143,9 @@ def preprocess(data):
     print(f"DEBUG: Unique users: {df['user'].unique()}")
     print(f"DEBUG: Sample messages: {df['message'].head().tolist()}")
     
-    # Remove rows with empty messages
     df = df[df['message'].str.strip() != '']
     print(f"DEBUG: After removing empty messages: {df.shape}")
 
-    # Handle date processing with error handling
     try:
         df['only_date'] = df['date'].dt.date
         df['year'] = df['date'].dt.year
@@ -186,7 +170,6 @@ def preprocess(data):
         df['period'] = period
     except Exception as e:
         print(f"DEBUG: Date processing error: {e}")
-        # Create default values if date processing fails
         df['only_date'] = pd.Timestamp.now().date()
         df['year'] = 2024
         df['month_num'] = 1

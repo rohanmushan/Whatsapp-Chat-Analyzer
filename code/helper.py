@@ -1,13 +1,14 @@
-from urlextract import URLExtract
-from wordcloud import WordCloud
+from urlextract import URLExtract  # find urls in messages
+from wordcloud import WordCloud  # build word cloud image
 import pandas as pd
-from collections import Counter
+from collections import Counter  # count words/emojis
 import emoji
-from pathlib import Path
+from pathlib import Path  # to read stopwords file
 
 extract = URLExtract()
 
 def fetch_stats(selected_user,df):
+    """basic counters for dashboard and pdf"""
     print(f"DEBUG: fetch_stats called with selected_user={selected_user}")
     print(f"DEBUG: Original df shape: {df.shape}")
     print(f"DEBUG: df columns: {list(df.columns)}")
@@ -17,22 +18,18 @@ def fetch_stats(selected_user,df):
         df = df[df['user'] == selected_user]
         print(f"DEBUG: After filtering for {selected_user}, df shape: {df.shape}")
 
-    # fetch the number of messages
     num_messages = df.shape[0]
     print(f"DEBUG: num_messages = {num_messages}")
 
-    # fetch the total number of words
     words = []
     for message in df['message'].astype(str):
         if message:
             words.extend(message.split())
     print(f"DEBUG: words count = {len(words)}")
 
-    # fetch number of media messages (robust to variants and trailing newlines)
     num_media_messages = df['message'].astype(str).str.strip().eq('<Media omitted>').sum()
     print(f"DEBUG: num_media_messages = {num_media_messages}")
 
-    # fetch number of links shared
     links = []
     for message in df['message'].astype(str):
         if message:
@@ -42,12 +39,14 @@ def fetch_stats(selected_user,df):
     return num_messages,len(words),num_media_messages,len(links)
 
 def most_busy_users(df):
+    """top users and percentage table (for overall view)"""
     x = df['user'].value_counts().head()
     df = round((df['user'].value_counts() / df.shape[0]) * 100, 2).reset_index().rename(
         columns={'index': 'name', 'user': 'percent'})
     return x,df
 
 def create_wordcloud(selected_user,df):
+    """make word cloud image after removing stop words"""
 
     stop_path = Path(__file__).resolve().parent / 'stop_hinglish.txt'
     stop_words_text = stop_path.read_text(encoding='utf-8') if stop_path.exists() else ''
@@ -82,6 +81,7 @@ def create_wordcloud(selected_user,df):
     return df_wc
 
 def most_common_words(selected_user,df):
+    """return dataframe with most common words and counts"""
 
     stop_path = Path(__file__).resolve().parent / 'stop_hinglish.txt'
     stop_words_text = stop_path.read_text(encoding='utf-8') if stop_path.exists() else ''
@@ -109,6 +109,7 @@ def most_common_words(selected_user,df):
     return most_common_df
 
 def emoji_helper(selected_user,df):
+    """count emojis used in messages for charts/tables"""
     if selected_user != 'Overall':
         df = df[df['user'] == selected_user]
 
@@ -136,6 +137,7 @@ def emoji_helper(selected_user,df):
     return emoji_df
 
 def monthly_timeline(selected_user,df):
+    """group by month to plot messages over months"""
 
     if selected_user != 'Overall':
         df = df[df['user'] == selected_user]
@@ -151,6 +153,7 @@ def monthly_timeline(selected_user,df):
     return timeline
 
 def daily_timeline(selected_user,df):
+    """group by day to plot daily messages"""
 
     if selected_user != 'Overall':
         df = df[df['user'] == selected_user]
@@ -160,6 +163,7 @@ def daily_timeline(selected_user,df):
     return daily_timeline
 
 def week_activity_map(selected_user,df):
+    """count messages by weekday"""
 
     if selected_user != 'Overall':
         df = df[df['user'] == selected_user]
@@ -167,6 +171,7 @@ def week_activity_map(selected_user,df):
     return df['day_name'].value_counts()
 
 def month_activity_map(selected_user,df):
+    """count messages by month name"""
 
     if selected_user != 'Overall':
         df = df[df['user'] == selected_user]
@@ -174,6 +179,7 @@ def month_activity_map(selected_user,df):
     return df['month'].value_counts()
 
 def activity_heatmap(selected_user,df):
+    """pivot table for weekday x period heatmap"""
 
     if selected_user != 'Overall':
         df = df[df['user'] == selected_user]
@@ -184,6 +190,7 @@ def activity_heatmap(selected_user,df):
 
 
 def time_activity_user_grid(selected_user, df):
+    """grid for altair heatmap (rows per user, day x hour)"""
 
     # Filter by selected user when not overall
     if selected_user != 'Overall':
