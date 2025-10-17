@@ -28,8 +28,8 @@ def fetch_stats(selected_user,df):
             words.extend(message.split())
     print(f"DEBUG: words count = {len(words)}")
 
-    # fetch number of media messages
-    num_media_messages = df[df['message'] == '<Media omitted>\n'].shape[0]
+    # fetch number of media messages (robust to variants and trailing newlines)
+    num_media_messages = df['message'].astype(str).str.strip().eq('<Media omitted>').sum()
     print(f"DEBUG: num_media_messages = {num_media_messages}")
 
     # fetch number of links shared
@@ -202,9 +202,10 @@ def time_activity_user_grid(selected_user, df):
           .reset_index(name='count')
     )
 
-    # Ensure categorical ordering and hour int
+    # Ensure categorical ordering and robust hour conversion
     grouped['day_name'] = pd.Categorical(grouped['day_name'], categories=day_order, ordered=True)
-    grouped['hour'] = grouped['hour'].astype(int)
+    # Coerce to numeric then fill invalid with 0 to avoid plotting errors
+    grouped['hour'] = pd.to_numeric(grouped['hour'], errors='coerce').fillna(0).astype(int)
 
     # Fill missing day-hour combinations per user with zeros
     users = grouped['user'].unique()
